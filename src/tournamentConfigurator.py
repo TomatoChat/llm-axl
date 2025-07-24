@@ -4,9 +4,9 @@ Tournament Configurator Module
 This module handles all user interactions and configuration setup for the tournament.
 """
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from axelrod.strategies import all_strategies
-from .tournamentConfiguration import TournamentConfiguration
+from .tournamentConfiguration import TournamentConfiguration, LLMStrategyConfig
 
 
 class TournamentConfigurator:
@@ -130,6 +130,99 @@ class TournamentConfigurator:
         
         return turns, noise
     
+    def getLLMConfiguration(self) -> Optional[LLMStrategyConfig]:
+        """
+        Get LLM configuration from user if LLM strategies are selected.
+        
+        Returns:
+            Optional[LLMStrategyConfig]: LLM configuration or None if not needed
+        """
+        print("\n--- LLM Strategy Configuration ---")
+        
+        # Check if any LLM strategies were selected
+        llm_strategies = ["LLMStrategy", "LLMStrategyWithMemory"]
+        has_llm_strategies = any(strategy in self.selected_strategies for strategy in llm_strategies)
+        
+        if not has_llm_strategies:
+            print("No LLM strategies selected. Skipping LLM configuration.")
+            return None
+        
+        print("LLM strategies detected! Please configure the LLM provider and model.")
+        
+        # Get provider selection
+        providers = [
+            ("openai", "OpenAI (GPT-3.5, GPT-4)"),
+            ("gemini", "Google Gemini (Gemini Pro)"),
+            ("anthropic", "Anthropic Claude (Claude Sonnet, Haiku, Opus)")
+        ]
+        
+        print("\nAvailable LLM Providers:")
+        for i, (provider, description) in enumerate(providers, 1):
+            print(f"{i}: {description}")
+        
+        while True:
+            try:
+                provider_choice = int(input("\nSelect LLM provider (1-3): "))
+                if 1 <= provider_choice <= 3:
+                    provider = providers[provider_choice - 1][0]
+                    break
+                else:
+                    print("Please enter a number between 1 and 3.")
+            except ValueError:
+                print("Please enter a valid number.")
+        
+        # Get model selection based on provider
+        if provider == "openai":
+            models = [
+                ("gpt-3.5-turbo", "GPT-3.5 Turbo (Fast, Cost-effective)"),
+                ("gpt-4", "GPT-4 (More capable, Higher cost)"),
+                ("gpt-4-turbo-preview", "GPT-4 Turbo (Latest, Best performance)")
+            ]
+        elif provider == "gemini":
+            models = [
+                ("gemini-pro", "Gemini Pro (Recommended)"),
+                ("gemini-pro-vision", "Gemini Pro Vision (With image support)")
+            ]
+        elif provider == "anthropic":
+            models = [
+                ("claude-3-sonnet-20240229", "Claude 3 Sonnet (Balanced)"),
+                ("claude-3-haiku-20240307", "Claude 3 Haiku (Fast, Cost-effective)"),
+                ("claude-3-opus-20240229", "Claude 3 Opus (Most capable)")
+            ]
+        
+        print(f"\nAvailable {provider.upper()} Models:")
+        for i, (model, description) in enumerate(models, 1):
+            print(f"{i}: {description}")
+        
+        while True:
+            try:
+                model_choice = int(input(f"\nSelect {provider.upper()} model (1-{len(models)}): "))
+                if 1 <= model_choice <= len(models):
+                    model = models[model_choice - 1][0]
+                    break
+                else:
+                    print(f"Please enter a number between 1 and {len(models)}.")
+            except ValueError:
+                print("Please enter a valid number.")
+        
+        # Get API key (optional)
+        print(f"\nAPI Key Configuration for {provider.upper()}:")
+        print("You can provide an API key now or set it as an environment variable.")
+        
+        api_key_input = input(f"Enter {provider.upper()} API key (or press Enter to use environment variable): ").strip()
+        api_key = api_key_input if api_key_input else None
+        
+        if not api_key:
+            env_var_name = f"{provider.upper()}_API_KEY"
+            print(f"Using environment variable: {env_var_name}")
+            print(f"Make sure to set: export {env_var_name}='your-api-key'")
+        
+        return LLMStrategyConfig(
+            provider=provider,
+            model=model,
+            api_key=api_key
+        )
+    
     def configureTournament(self) -> TournamentConfiguration:
         """
         Configure the entire tournament through user interaction.
@@ -152,14 +245,21 @@ class TournamentConfigurator:
             strategy = self.getStrategySelection(i, strategies)
             selectedStrategies.append(strategy)
         
+        # Store selected strategies for LLM configuration check
+        self.selected_strategies = selectedStrategies
+        
         # Get game parameters
         print("\n--- Game Parameters ---")
         turns, noise = self.getGameParameters()
+        
+        # Get LLM configuration if needed
+        llm_config = self.getLLMConfiguration()
         
         return TournamentConfiguration(
             numPlayers=numPlayers,
             strategies=selectedStrategies,
             turns=turns,
             noise=noise,
-            payoffMatrix=self.defaultPayoffMatrix
+            payoffMatrix=self.defaultPayoffMatrix,
+            llmConfig=llm_config
         ) 

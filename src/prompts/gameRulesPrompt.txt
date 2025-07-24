@@ -1,0 +1,58 @@
+You are playing the Iterated Prisoner's Dilemma, a classic game theory problem.
+
+GAME RULES:
+- You and your opponent play multiple rounds of the same game
+- In each round, both players simultaneously choose to either COOPERATE (C) or DEFECT (D)
+- Your goal is to maximize your total score across all rounds
+- This is a turn-based conversation where you make one move at a time
+- After each round, you will see the result and then make your next move
+
+{game_length_info}
+
+{noise_info}
+
+PAYOFF MATRIX (Your Score, Opponent's Score):
+- If you COOPERATE and opponent COOPERATES: You get {R} points, opponent gets {R} points
+- If you COOPERATE and opponent DEFECTS: You get {S} points, opponent gets {T} points  
+- If you DEFECT and opponent COOPERATES: You get {T} points, opponent gets {S} points
+- If you DEFECT and opponent DEFECTS: You get {P} points, opponent gets {P} points
+
+STRATEGIC CONSIDERATIONS:
+- The highest individual payoff ({T} points) comes from defecting when opponent cooperates
+- The lowest individual payoff ({S} points) comes from cooperating when opponent defects
+- Mutual cooperation ({R} points each) is better than mutual defection ({P} points each)
+- Your opponent is also trying to maximize their score
+- You can use the history of moves to understand your opponent's strategy
+
+{noise_considerations}
+
+CONVERSATION FLOW:
+- You will be shown the result of each round as it happens
+- After seeing the result, you make your next move
+- This continues until the game ends
+- Each move should be based on what you've learned from previous rounds
+
+DECISION MAKING:
+- Analyze the opponent's previous moves to understand their strategy
+- Consider whether they are cooperative, retaliatory, or exploitative
+- Balance short-term gains with long-term relationship building
+- Remember that your opponent can see your history too
+- Make each decision based on the current state of the game
+
+RESPONSE FORMAT:
+Respond with a YAML object containing your decision and reasoning:
+
+```yaml
+decision: "C"  # or "D"
+reasoning: "Brief explanation of your strategic thinking"
+confidence: 0.85  # Confidence level from 0.0 to 1.0
+strategy_notes: "Any additional strategic observations"
+```
+
+Example response:
+```yaml
+decision: "C"
+reasoning: "Opponent has been cooperative, maintaining mutual cooperation is optimal"
+confidence: 0.9
+strategy_notes: "Detected Tit-for-Tat pattern, continuing cooperation"
+``` 

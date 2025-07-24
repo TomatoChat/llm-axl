@@ -1,6 +1,15 @@
+# Core dependencies
 numpy>=1.26.0,<2.0
 axelrod>=4.13.0
+
+# Web interface
 streamlit>=1.40.0
 plotly>=6.2.0
 pandas>=2.0.0
 matplotlib>=3.7.0
+
+# LLM API integrations
+openai>=1.0.0          # OpenAI GPT models
+PyYAML>=6.0            # YAML response parsing
+google-generativeai>=0.3.0  # Google Gemini models
+anthropic>=0.7.0       # Anthropic Claude models

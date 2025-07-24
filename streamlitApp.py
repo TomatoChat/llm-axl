@@ -14,6 +14,7 @@ from typing import List, Dict, Any
 import sys
 import os
 import random
+import axelrod as axl
 
 # Add src to path to import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -32,12 +33,83 @@ def getAvailableStrategies() -> List[Dict[str, Any]]:
         List[Dict[str, Any]]: List of strategy dictionaries
     """
     strategies = []
+    
+    # Add LLM strategies with different provider-model combinations FIRST
+    from src.llmStrategy import LLMStrategy, LLMStrategyWithMemory
+    
+    # Define provider-model combinations
+    llm_combinations = [
+        # OpenAI models
+        ("openai", "gpt-4o", "OpenAI - GPT-4o (Latest)"),
+        ("openai", "gpt-4o-mini", "OpenAI - GPT-4o Mini (Fast)"),
+        ("openai", "gpt-4-turbo", "OpenAI - GPT-4 Turbo"),
+        ("openai", "gpt-4", "OpenAI - GPT-4"),
+        ("openai", "gpt-3.5-turbo", "OpenAI - GPT-3.5 Turbo"),
+        ("openai", "gpt-3.5-turbo-16k", "OpenAI - GPT-3.5 Turbo 16K"),
+        
+        # Gemini models
+        ("gemini", "gemini-1.5-pro", "Gemini - Gemini 1.5 Pro"),
+        ("gemini", "gemini-1.5-flash", "Gemini - Gemini 1.5 Flash"),
+        ("gemini", "gemini-1.5-pro-latest", "Gemini - Gemini 1.5 Pro Latest"),
+        ("gemini", "gemini-1.5-flash-latest", "Gemini - Gemini 1.5 Flash Latest"),
+        ("gemini", "gemini-pro", "Gemini - Gemini Pro"),
+        ("gemini", "gemini-pro-vision", "Gemini - Gemini Pro Vision"),
+        
+        # Anthropic models
+        ("anthropic", "claude-3-5-sonnet-20240620", "Anthropic - Claude 3.5 Sonnet"),
+        ("anthropic", "claude-3-opus-20240229", "Anthropic - Claude 3 Opus"),
+        ("anthropic", "claude-3-sonnet-20240229", "Anthropic - Claude 3 Sonnet"),
+        ("anthropic", "claude-3-haiku-20240307", "Anthropic - Claude 3 Haiku"),
+        ("anthropic", "claude-2.1", "Anthropic - Claude 2.1"),
+        ("anthropic", "claude-2.0", "Anthropic - Claude 2.0"),
+        ("anthropic", "claude-instant-1.2", "Anthropic - Claude Instant 1.2"),
+    ]
+    
+    # Add LLMStrategy with each combination
+    for provider, model, display_name in llm_combinations:
+        strategies.append({
+            'index': len(strategies) + 1,
+            'name': f"LLMStrategy ({display_name})",
+            'class': LLMStrategy,
+            'type': 'llm',
+            'provider': provider,
+            'model': model,
+            'strategy_type': 'LLMStrategy'
+        })
+    
+    # Add LLMStrategyWithMemory with each combination
+    for provider, model, display_name in llm_combinations:
+        strategies.append({
+            'index': len(strategies) + 1,
+            'name': f"LLMStrategyWithMemory ({display_name})",
+            'class': LLMStrategyWithMemory,
+            'type': 'llm',
+            'provider': provider,
+            'model': model,
+            'strategy_type': 'LLMStrategyWithMemory'
+        })
+    
+    # Add Human Player strategy
+    try:
+        from src.humanPlayer import HumanPlayer
+        strategies.append({
+            'index': len(strategies) + 1,
+            'name': 'HumanPlayer (You)',
+            'class': HumanPlayer,
+            'type': 'human'
+        })
+    except ImportError:
+        pass  # Skip if human player module not available
+    
+    # Add regular Axelrod strategies AFTER LLM strategies
     for i, strategy in enumerate(all_strategies):
         strategies.append({
-            'index': i + 1,
+            'index': len(strategies) + 1,
             'name': strategy.name,
-            'class': strategy
+            'class': strategy,
+            'type': 'axelrod'
         })
+    
     return strategies
 
 
@@ -80,6 +152,8 @@ def createTournamentConfiguration() -> TournamentConfiguration:
             key=f"player_{i}"
         )
         selectedStrategies.append(strategies[selectedIndex]['name'])
+    
+    llm_config = None  # No longer needed since provider/model are embedded in strategy names
     
     # Game parameters
     st.subheader("⚙️ Game Parameters")
@@ -284,7 +358,8 @@ def createTournamentConfiguration() -> TournamentConfiguration:
         probEnd=probEnd,
         distributionType=distributionType,
         distributionParams=distributionParams,
-        payoffMatrix=payoffMatrix
+        payoffMatrix=payoffMatrix,
+        llmConfig=llm_config
     )
 
 
@@ -521,6 +596,257 @@ def showStrategiesPage():
                 st.info("🎲 This strategy uses random decisions")
 
 
+def showYouVsPage():
+    """
+    Display the YOU vs AI gameplay page.
+    """
+    # Header with reset button in top right
+    col1, col2, col3 = st.columns([3, 1, 1])
+    
+    with col1:
+        st.title("🎮 YOU vs AI")
+        st.markdown("""
+        Challenge yourself against AI strategies! You'll play the Iterated Prisoner's Dilemma
+        against computer opponents without knowing their strategy. Only at the end will you
+        discover how you performed and what strategy you were facing.
+        """)
+    
+    with col3:
+        st.write("")  # Spacer
+        st.write("")  # Spacer
+        if st.button("🔄 Reset Game", type="secondary", use_container_width=True):
+            # Reset all game-related state variables
+            for key in list(st.session_state.keys()):
+                if key.startswith('vs_'):
+                    del st.session_state[key]
+            st.success("Game reset! You can start a new game.")
+            st.rerun()
+
+    # Initialize session state for the game
+    if 'vs_game_started' not in st.session_state:
+        st.session_state.vs_game_started = False
+    if 'vs_game_finished' not in st.session_state:
+        st.session_state.vs_game_finished = False
+    if 'vs_history' not in st.session_state:
+        st.session_state.vs_history = []
+    if 'vs_human_player' not in st.session_state:
+        st.session_state.vs_human_player = None
+    if 'vs_ai_opponent' not in st.session_state:
+        st.session_state.vs_ai_opponent = None
+    if 'vs_match' not in st.session_state:
+        st.session_state.vs_match = None
+    if 'vs_match_iterator' not in st.session_state:
+        st.session_state.vs_match_iterator = None
+
+    # Game setup section
+    if not st.session_state.vs_game_started:
+        st.subheader("🎯 Game Setup")
+        
+        # Game length
+        game_length = st.number_input(
+            "Number of Rounds",
+            min_value=5,
+            max_value=50,
+            value=10,
+            key="vs_game_length",
+            help="How many rounds do you want to play?"
+        )
+        
+        # Player name
+        player_name = st.text_input(
+            "Your Name",
+            value="You",
+            key="vs_player_name",
+            help="What should we call you?"
+        )
+        
+        # Get available strategies (excluding human player)
+        strategies = getAvailableStrategies()
+        ai_strategies = [s for s in strategies if s['type'] != 'human']
+        
+        # Let the user choose the opponent
+        selected_opponent = st.selectbox(
+            "Choose your opponent:",
+            options=ai_strategies,
+            format_func=lambda x: x['name'],
+            key="vs_selected_opponent",
+            help="The AI opponent you'll face"
+        )
+        
+        # Start game button
+        if st.button("🎮 Start Game", type="primary"):
+            from src.humanPlayer import HumanPlayer
+            
+            # Create human player and AI opponent
+            st.session_state.vs_human_player = HumanPlayer(name=player_name)
+            st.session_state.vs_ai_opponent = selected_opponent['class']()
+            st.session_state.vs_ai_opponent.name = selected_opponent['name'] # Set opponent name for display
+            
+            # Create the match and the iterator for play
+            st.session_state.vs_match = axl.Match(
+                (st.session_state.vs_human_player, st.session_state.vs_ai_opponent),
+                turns=game_length
+            )
+            st.session_state.vs_match_iterator = iter(st.session_state.vs_match.play())
+            
+            # Set game state
+            st.session_state.vs_game_started = True
+            st.session_state.vs_game_finished = False
+            st.session_state.vs_history = []
+            
+            st.success("Game started! Your opponent's strategy is hidden until the end.")
+            st.rerun()
+
+    # Gameplay section
+    elif not st.session_state.vs_game_finished:
+        match = st.session_state.vs_match
+        match_iterator = st.session_state.vs_match_iterator
+        current_round = len(match.result) + 1
+        
+        st.subheader(f"🎮 Round {current_round} / {match.turns}")
+        
+        # Show game rules reminder
+        with st.expander("📖 Game Rules Reminder", expanded=False):
+            st.markdown("""            **Prisoner's Dilemma Rules:**
+            - You and your opponent simultaneously choose to **Cooperate (C)** or **Defect (D)**
+            - **CC**: Both get 3 points (mutual cooperation)
+            - **CD**: You get 0, opponent gets 5 (you cooperate, they defect)
+            - **DC**: You get 5, opponent gets 0 (you defect, they cooperate)
+            - **DD**: Both get 1 point (mutual defection)
+            
+            **Goal:** Maximize your total score over all rounds!
+            """        )
+        
+        # Decision buttons
+        st.write("**Your Decision:**")
+        col1, col2 = st.columns(2)
+        
+        decision = None
+        if col1.button("🤝 Cooperate (C)", use_container_width=True, type="primary"):
+            decision = axl.Action.C
+        if col2.button("💔 Defect (D)", use_container_width=True, type="secondary"):
+            decision = axl.Action.D
+            
+        if decision:
+            # Set the human player's move
+            st.session_state.vs_human_player.set_move(decision)
+            
+            # Play the round using Axelrod's system
+            try:
+                next(match_iterator)
+                st.rerun()
+            except StopIteration:
+                # This happens when the match is over
+                st.session_state.vs_game_finished = True
+                st.rerun()
+
+        # Show current scores and history
+        if len(match.result) > 0:
+            # Create a summary from the match history
+            history_df = pd.DataFrame(
+                match.result,
+                columns=['human_decision', 'ai_decision']
+            )
+            
+            # Calculate scores
+            scores = match.scores()
+            human_total_score = scores[0]
+            ai_total_score = scores[1]
+            
+            # Calculate cooperation rates
+            human_cooperation_rate = history_df['human_decision'].value_counts(normalize=True).get('C', 0)
+            ai_cooperation_rate = history_df['ai_decision'].value_counts(normalize=True).get('C', 0)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Your Score", f"{human_total_score}")
+                st.metric("Your Cooperation Rate", f"{human_cooperation_rate:.1%}")
+            with col2:
+                st.metric("Opponent Score", f"{ai_total_score}")
+                st.metric("Opponent Cooperation Rate", f"{ai_cooperation_rate:.1%}")
+
+            # Show game history
+            st.write("**Game History:**")
+            display_history = history_df.copy()
+            display_history['round'] = range(1, len(display_history) + 1)
+            # Add scores for each round
+            round_scores = match.final_score_per_turn()
+            display_history['human_score'] = [s[0] for s in round_scores]
+            display_history['ai_score'] = [s[1] for s in round_scores]
+            
+            st.dataframe(
+                display_history[['round', 'human_decision', 'ai_decision', 'human_score', 'ai_score']].sort_values('round', ascending=False),
+                use_container_width=True
+            )
+
+        # Check if game is finished
+        if len(match.result) >= match.turns:
+            st.session_state.vs_game_finished = True
+            st.balloons()
+            st.rerun()
+
+    # Game results section
+    else:
+        st.subheader("🏆 Game Results")
+        
+        match = st.session_state.vs_match
+        human_player = st.session_state.vs_human_player
+        ai_opponent = st.session_state.vs_ai_opponent
+        
+        # Get final scores
+        final_scores = match.final_score()
+        human_score = final_scores[0]
+        ai_score = final_scores[1]
+        
+        # Determine winner
+        if human_score > ai_score:
+            st.success(f"🎉 Congratulations, {human_player.name}! You won with {human_score} points!")
+        elif ai_score > human_score:
+            st.error(f"😔 {ai_opponent.name} won with {ai_score} points.")
+        else:
+            st.info(f"🤝 It's a tie! Both players scored {human_score} points.")
+        
+        # Show opponent reveal with strategy description
+        st.info(f"🎭 **Opponent Reveal:** You were playing against **{ai_opponent.name}**")
+        
+        # Get strategy description
+        if hasattr(ai_opponent, '__doc__') and ai_opponent.__doc__:
+            st.write(f"**Strategy Description:** {ai_opponent.__doc__.strip()}")
+        
+        # Show detailed results
+        history_df = pd.DataFrame(match.result, columns=['human_decision', 'ai_decision'])
+        human_cooperation_rate = history_df['human_decision'].value_counts(normalize=True).get('C', 0)
+        ai_cooperation_rate = history_df['ai_decision'].value_counts(normalize=True).get('C', 0)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Your Final Score", human_score)
+            st.metric("Your Cooperation Rate", f"{human_cooperation_rate:.1%}")
+        with col2:
+            st.metric("Opponent Final Score", ai_score)
+            st.metric("Opponent Cooperation Rate", f"{ai_cooperation_rate:.1%}")
+        
+        # Show complete game history
+        st.write("**Complete Game History:**")
+        display_history = history_df.copy()
+        display_history['round'] = range(1, len(display_history) + 1)
+        round_scores = match.final_score_per_turn()
+        display_history['human_score'] = [s[0] for s in round_scores]
+        display_history['ai_score'] = [s[1] for s in round_scores]
+        st.dataframe(
+            display_history[['round', 'human_decision', 'ai_decision', 'human_score', 'ai_score']],
+            use_container_width=True
+        )
+        
+        # Play again button
+        if st.button("🔄 Play Again", type="primary"):
+            # Reset all game-related state variables
+            for key in list(st.session_state.keys()):
+                if key.startswith('vs_'):
+                    del st.session_state[key]
+            st.rerun()
+
+
 def showTournamentPage():
     """
     Display the main tournament page.
@@ -557,8 +883,6 @@ def showTournamentPage():
     
     # Tournament Configuration Section
     with st.expander("🎮 Tournament Configuration", expanded=True):
-        st.info("💡 Configuration is automatically saved on every change. No need to manually save!")
-        
         config = createTournamentConfiguration()
         
         # Automatically save configuration to session state
@@ -619,7 +943,7 @@ def main():
     )
     
     # Sidebar navigation
-    st.sidebar.title("🧭 Navigation")
+    st.sidebar.title("🤖 llm-axl")
     
     # Initialize current page if not set
     if 'current_page' not in st.session_state:
@@ -628,6 +952,7 @@ def main():
     # Navigation buttons with active state indication
     tournament_active = st.session_state.current_page == "tournament"
     strategies_active = st.session_state.current_page == "strategies"
+    you_vs_active = st.session_state.current_page == "you_vs"
     
     # Tournament button
     if st.sidebar.button(
@@ -636,6 +961,15 @@ def main():
         use_container_width=True
     ):
         st.session_state.current_page = "tournament"
+        st.rerun()
+    
+    # YOU vs AI button
+    if st.sidebar.button(
+        "🎮 YOU vs Strategy",
+        type="primary" if you_vs_active else "secondary",
+        use_container_width=True
+    ):
+        st.session_state.current_page = "you_vs"
         st.rerun()
     
     # Strategies button
@@ -647,30 +981,14 @@ def main():
         st.session_state.current_page = "strategies"
         st.rerun()
     
-    # Sidebar info
-    st.sidebar.markdown("---")
-    st.sidebar.header("ℹ️ About")
-    st.sidebar.markdown("""
-    **The Iterated Prisoner's Dilemma** is a classic game theory problem where two players repeatedly choose to either cooperate or defect.
-    
-    **Strategies** determine how players make their decisions based on the history of play.
-    
-    **Tournaments** pit multiple strategies against each other to see which performs best over many rounds.
-    """)
-    
-    st.sidebar.header("📚 Learn More")
-    st.sidebar.markdown("""
-    - [Axelrod's Tournament](https://en.wikipedia.org/wiki/Axelrod%27s_tournament)
-    - [Prisoner's Dilemma](https://en.wikipedia.org/wiki/Prisoner%27s_dilemma)
-    - [Game Theory](https://en.wikipedia.org/wiki/Game_theory)
-    """)
-    
     # Display current page
     if st.session_state.current_page == "tournament":
         showTournamentPage()
+    elif st.session_state.current_page == "you_vs":
+        showYouVsPage()
     elif st.session_state.current_page == "strategies":
         showStrategiesPage()
 
 
 if __name__ == "__main__":
-    main() 
+    main()
